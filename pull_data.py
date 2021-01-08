@@ -2,12 +2,9 @@ import requests
 from bs4 import BeautifulSoup
 from app import models
 from app.database import session, engine
-
+from sqlalchemy import exc
 db = session()
 models.Base.metadata.create_all(bind=engine)
-
-def forumlate_id(title, company, location):
-    return "end"
 
 def get_monster_jobs(end):
     url = "https://www.monster.com/jobs/search/?q=software-engineer-intern&where=94583&stpage=1&page=" + str(end)
@@ -21,20 +18,22 @@ def get_monster_jobs(end):
         try:
 
             mjob_id = job.get('data-jobid')
-            job_url = url + '&jobid=' + mjob_id 
+            #print(mjob_id)
+            job_url = url + '&jobid=' + str(mjob_id)
             title = job.find('h2', class_='title').find('a').text.replace('\n', "")
             company = job.find('div', class_="company").find('span', class_="name").text.replace("\n", "")
             location = job.find('div', class_="location").find('span', class_="name").text.replace("\n", "")
-            db_job = models.Job(job_id= mjob_id, title=title, company=company, location=location, url=job_url)
+            db_job = models.Job(job_id= mjob_id, title=title, company=company, location=location, url=job_url, source = "Monster")
+                
             db.add(db_job)
-            print(mjob_id)
-            print(title)
-            print(company)
-            print(location)
-            print("-----")
+            try:
+                db.commit()
+            except exc.IntegrityError:
+                db.rollback()
+                continue
         except AttributeError:
             continue
-    db.commit()        
+            
 
 
 def url_incr(base_url, curr_start):
@@ -47,10 +46,8 @@ def get_indeed_jobs(limit):
     url = "https://www.indeed.com/jobs?q=software+engineer+intern&l=San+Ramon%2C+CA"
     start = 0
     
-
-    #print(res.prettify())
+    excluded = 0
     while start < limit:
-
 
         page = requests.get(url)
 
@@ -58,25 +55,33 @@ def get_indeed_jobs(limit):
 
         res = soup.find(id='resultsCol')
         jobs = res.find_all('div', class_='result')
-        #print(jobs)
         for job in jobs:
-            #print(job)
+     
             ijob_id = job.get('data-jk')
+
             job_url = url + ijob_id
             title = job.find('a', class_="jobtitle").text.replace("\n", "")
-            location = job.find('span', class_="location").text
-            print(title)
-            print(location)
+            try:
+                location = job.find('span', class_="location").text
+            except AttributeError:
+                location = ""
             try:
                 company = job.find('a', {"data-tn-element":"companyName"}).text.replace("\n", "")
             except AttributeError:
                 company = job.find('span', class_="company").text.replace("\n", "")
-            db_job = models.Job(job_id= ijob_id, title=title, company=company, location=location, url=job_url)
+            db_job = models.Job(job_id= ijob_id, title=title, company=company, location=location, url=job_url, source= "Indeed")
             db.add(db_job)
-            print(company)
-            print("-------------")
+            try:
+                db.commit()
+            except exc.IntegrityError:
+                print(ijob_id)
+                excluded += 1
+                db.rollback()
+                continue
         url = url_incr(url, start)
         start += 10
-    db.commit()
+    print(excluded)
+    #db.commit()
 get_indeed_jobs(50)
+get_monster_jobs(10)
 

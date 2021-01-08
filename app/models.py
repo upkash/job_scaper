@@ -8,3 +8,4 @@ class Job(Base):
     location = Column(String(50))
     company = Column(String(50))
     url = Column(String(200))
+    source = Column(String(20))
